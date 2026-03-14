@@ -4,7 +4,7 @@ runtime:
 
 providers:
   openAiCompatible:
-    enabled: false
+    enabled: true
     baseUrl: https://api.openai.com/v1
     model: gpt-5-mini
     timeoutMs: 30000
@@ -129,7 +129,6 @@ issues:
       - question
       - needs-template-fix
       - duplicate
-      - needs-ai-help
     definitions:
       bug:
         color: d73a4a
@@ -146,14 +145,10 @@ issues:
       duplicate:
         color: cfd3d7
         description: This issue already exists.
-      needs-ai-help:
-        color: 0e8a16
-        description: This issue is queued for AI assistance.
     keywordRules: []
   aiHelp:
-    enabled: false
-    triggerLabels:
-      - needs-ai-help
+    enabled: true
+    triggerLabels: []
     commentAnchor: issue-bot:ai
 
 pullRequests:
