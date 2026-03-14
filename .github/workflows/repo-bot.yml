@@ -1,0 +1,20 @@
+name: Repo Bot
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - reopened
+      - labeled
+
+jobs:
+  repo-bot:
+    uses: ddaodan/bettergi-github-bot/.github/workflows/repo-bot.yml@v1
+    permissions:
+      issues: write
+      contents: read
+    secrets: inherit
+    with:
+      config-path: .github/repo-bot.yml
+      config-overrides-json: ${{ vars.REPO_BOT_CONFIG_OVERRIDES_JSON }}
