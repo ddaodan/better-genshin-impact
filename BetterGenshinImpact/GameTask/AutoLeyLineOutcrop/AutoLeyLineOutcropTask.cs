@@ -1550,15 +1550,17 @@ public class AutoLeyLineOutcropTask : ISoloTask
             return await AttemptReward(retryCount + 1);
         }
 
-        var isOriginalResinEmpty = await CheckOriginalResinEmpty();
-        var sortedButtons = FindAndSortUseButtons();
+        await ActivateRewardPrompt();
+
+        var promptRegions = CaptureRewardPromptRegions();
+        var sortedButtons = FindAndSortUseButtons(promptRegions);
         if (sortedButtons.Count == 0)
         {
             await EnsureExitRewardPage();
             return false;
         }
 
-        var resinChoice = await AnalyzeResinOptions(sortedButtons, isOriginalResinEmpty);
+        var resinChoice = await AnalyzeResinOptions(promptRegions, sortedButtons);
         if (resinChoice == null)
         {
             await EnsureExitRewardPage();
@@ -1581,18 +1583,8 @@ public class AutoLeyLineOutcropTask : ISoloTask
     private async Task<bool> VerifyRewardPage()
     {
         using var capture = CaptureToRectArea();
-        var roi = new Rect(0, 0, capture.Width, capture.Height / 2);
-        var list = capture.FindMulti(RecognitionObject.Ocr(roi));
-        foreach (var res in list)
-        {
-            var text = res.Text;
-            if (text.Contains("激活地脉之花", StringComparison.Ordinal) || text.Contains("选择激活方式", StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        var titleRoi = GetRewardPromptTitleRoi(capture);
+        return CaptureRewardPromptTitleRegion(capture, titleRoi) != null;
     }
 
     private IDisposable DrawOcrOverlayScope(ImageRegion capture, string key, params Rect[] rois)
@@ -1700,28 +1692,50 @@ public class AutoLeyLineOutcropTask : ISoloTask
         });
     }
 
-    private async Task<bool> CheckOriginalResinEmpty()
+    private async Task ActivateRewardPrompt()
     {
         using var capture = CaptureToRectArea();
-        var list = capture.FindMulti(_ocrRoThis);
-        foreach (var res in list)
+        var titleRoi = GetRewardPromptTitleRoi(capture);
+        var titleRegion = CaptureRewardPromptTitleRegion(capture, titleRoi);
+        if (titleRegion != null)
         {
-            if (res.Text.Contains("补充", StringComparison.Ordinal))
-            {
-                return true;
-            }
+            titleRegion.Click();
+            _logger.LogDebug("奖励页面已点击标题激活弹窗：text={Text}, x={X}, y={Y}", titleRegion.Text, titleRegion.X, titleRegion.Y);
+        }
+        else
+        {
+            capture.Derive(titleRoi).Click();
+            _logger.LogDebug("奖励页面标题 OCR 被拆分，回退点击标题区域中心激活弹窗");
         }
 
-        return false;
+        await Delay(800, _ct);
     }
 
-    private List<UseButton> FindAndSortUseButtons()
+    private Region? CaptureRewardPromptTitleRegion(ImageRegion capture, Rect titleRoi)
+    {
+        var list = capture.FindMulti(RecognitionObject.Ocr(titleRoi));
+        var mergedLines = MergeTextRegionsByLine(capture, list);
+        return mergedLines.FirstOrDefault(r => IsRewardPromptTitleText(r.Text));
+    }
+
+    private static bool IsRewardPromptTitleText(string text)
+    {
+        return text.Contains("激活地脉之花", StringComparison.Ordinal)
+               || text.Contains("选择激活方式", StringComparison.Ordinal)
+               || text.Contains("地脉之花", StringComparison.Ordinal);
+    }
+
+    private List<Region> CaptureRewardPromptRegions()
     {
         using var capture = CaptureToRectArea();
-        var list = capture.FindMulti(_ocrRoThis);
+        return capture.FindMulti(RecognitionObject.Ocr(GetRewardPromptContentRoi(capture)));
+    }
+
+    private List<UseButton> FindAndSortUseButtons(List<Region> promptRegions)
+    {
         var buttons = new List<UseButton>();
 
-        foreach (var res in list)
+        foreach (var res in promptRegions)
         {
             var text = res.Text.Trim();
             if (text == "使用")
@@ -1735,18 +1749,21 @@ public class AutoLeyLineOutcropTask : ISoloTask
         return buttons.OrderBy(b => b.SortKey).ToList();
     }
 
-    private async Task<UseButton?> AnalyzeResinOptions(List<UseButton> sortedButtons, bool isOriginalResinEmpty)
+    private async Task<UseButton?> AnalyzeResinOptions(List<Region> promptRegions, List<UseButton> sortedButtons)
     {
-        using var capture = CaptureToRectArea();
-        var list = capture.FindMulti(_ocrRoThis);
-        var texts = list.Select(r => new { r.Text, r.Y }).ToList();
+        var lineTexts = BuildPromptTextLines(promptRegions);
+        var isOriginalResinEmpty = lineTexts.Any(text => text.Contains("补充", StringComparison.Ordinal));
+        var hasDoubleReward = lineTexts.Any(text => text.Contains("双倍", StringComparison.Ordinal)
+                                                    || text.Contains("2倍产出", StringComparison.Ordinal)
+                                                    || text.Contains("2倍", StringComparison.Ordinal));
+        var originalResinLines = lineTexts.Where(text => text.Contains("原粹", StringComparison.Ordinal)).ToList();
+        var hasOriginal20 = !isOriginalResinEmpty && originalResinLines.Any(text => text.Contains("20", StringComparison.Ordinal));
+        var hasOriginal40 = !isOriginalResinEmpty && originalResinLines.Any(text => text.Contains("40", StringComparison.Ordinal));
+        var hasCondensed = lineTexts.Any(text => text.Contains("浓缩", StringComparison.Ordinal));
+        var hasTransient = lineTexts.Any(text => text.Contains("须臾", StringComparison.Ordinal));
+        var hasFragile = lineTexts.Any(text => text.Contains("脆弱", StringComparison.Ordinal));
 
-        var hasDoubleReward = texts.Any(t => t.Text.Contains("双倍", StringComparison.Ordinal) || t.Text.Contains("2倍产出", StringComparison.Ordinal) || t.Text.Contains("2倍", StringComparison.Ordinal));
-        var hasOriginal20 = !isOriginalResinEmpty && texts.Any(t => t.Text.Contains("20", StringComparison.Ordinal) && t.Text.Contains("原粹", StringComparison.Ordinal));
-        var hasOriginal40 = !isOriginalResinEmpty && texts.Any(t => t.Text.Contains("40", StringComparison.Ordinal) && t.Text.Contains("原粹", StringComparison.Ordinal));
-        var hasCondensed = texts.Any(t => t.Text.Contains("浓缩", StringComparison.Ordinal));
-        var hasTransient = texts.Any(t => t.Text.Contains("须臾", StringComparison.Ordinal));
-        var hasFragile = texts.Any(t => t.Text.Contains("脆弱", StringComparison.Ordinal));
+        _logger.LogDebug("奖励页面树脂识别结果：ocr={Texts}", string.Join(" | ", lineTexts));
 
         if (isOriginalResinEmpty)
         {
@@ -1770,9 +1787,9 @@ public class AutoLeyLineOutcropTask : ISoloTask
 
         if (hasDoubleReward && (hasOriginal20 || hasOriginal40))
         {
-            if (hasOriginal20 && !hasOriginal40)
+            if (hasOriginal40 && !hasOriginal20)
             {
-                await TrySwitch20To40Resin();
+                await TrySwitchOriginalResinAmount(20);
             }
 
             return sortedButtons.FirstOrDefault();
@@ -1792,7 +1809,7 @@ public class AutoLeyLineOutcropTask : ISoloTask
         {
             if (hasOriginal20 && !hasOriginal40)
             {
-                await TrySwitch20To40Resin();
+                await TrySwitchOriginalResinAmount(40);
             }
 
             return sortedButtons.FirstOrDefault();
@@ -1806,7 +1823,7 @@ public class AutoLeyLineOutcropTask : ISoloTask
         return sortedButtons.FirstOrDefault();
     }
 
-    private async Task<bool> TrySwitch20To40Resin()
+    private async Task<bool> TrySwitchOriginalResinAmount(int expectedAmount)
     {
         var switchRo = BuildTemplate("Assets/icon/switch_button.png", null, 0.7);
         using var capture = CaptureToRectArea();
@@ -1819,9 +1836,87 @@ public class AutoLeyLineOutcropTask : ISoloTask
         res.Click();
         await Delay(800, _ct);
 
-        using var check = CaptureToRectArea();
-        var list = check.FindMulti(_ocrRoThis);
-        return list.Any(r => r.Text.Contains("40", StringComparison.Ordinal) && r.Text.Contains("原粹", StringComparison.Ordinal));
+        var lineTexts = BuildPromptTextLines(CaptureRewardPromptRegions());
+        var originalResinLines = lineTexts.Where(text => text.Contains("原粹", StringComparison.Ordinal));
+        return expectedAmount == 20
+            ? originalResinLines.Any(text => text.Contains("20", StringComparison.Ordinal))
+            : originalResinLines.Any(text => text.Contains("40", StringComparison.Ordinal));
+    }
+
+    private static Rect GetRewardPromptTitleRoi(ImageRegion capture)
+    {
+        return new Rect(capture.Width / 4, capture.Height * 3 / 20, capture.Width / 2, capture.Height / 4);
+    }
+
+    private static Rect GetRewardPromptContentRoi(ImageRegion capture)
+    {
+        return new Rect(capture.Width / 4, capture.Height / 5, capture.Width / 2, capture.Height * 3 / 5);
+    }
+
+    private static List<string> BuildPromptTextLines(IEnumerable<Region> regions)
+    {
+        return GroupPromptRegionsByLine(regions)
+            .Select(line => string.Concat(line.OrderBy(r => r.X).Select(r => r.Text.Trim())))
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToList();
+    }
+
+    private static List<Region> MergeTextRegionsByLine(Region owner, IEnumerable<Region> regions)
+    {
+        var merged = new List<Region>();
+        foreach (var line in GroupPromptRegionsByLine(regions))
+        {
+            var orderedLine = line.OrderBy(r => r.X).ToList();
+            var left = orderedLine.Min(r => r.X);
+            var top = orderedLine.Min(r => r.Y);
+            var right = orderedLine.Max(r => r.Right);
+            var bottom = orderedLine.Max(r => r.Bottom);
+            var mergedRegion = owner.Derive(left, top, right - left, bottom - top);
+            mergedRegion.Text = string.Concat(orderedLine.Select(r => r.Text.Trim()));
+            merged.Add(mergedRegion);
+        }
+
+        return merged.OrderBy(r => r.Y).ThenBy(r => r.X).ToList();
+    }
+
+    private static List<List<Region>> GroupPromptRegionsByLine(IEnumerable<Region> regions)
+    {
+        var ordered = regions
+            .Where(r => !string.IsNullOrWhiteSpace(r.Text))
+            .OrderBy(r => r.Y)
+            .ThenBy(r => r.X)
+            .ToList();
+
+        var lines = new List<List<Region>>();
+        foreach (var region in ordered)
+        {
+            var line = lines.FirstOrDefault(candidate => IsSamePromptLine(candidate[0], region));
+            if (line == null)
+            {
+                lines.Add(new List<Region> { region });
+            }
+            else
+            {
+                line.Add(region);
+            }
+        }
+
+        return lines;
+    }
+
+    private static bool IsSamePromptLine(Region left, Region right)
+    {
+        var overlapTop = Math.Max(left.Top, right.Top);
+        var overlapBottom = Math.Min(left.Bottom, right.Bottom);
+        if (overlapBottom > overlapTop)
+        {
+            return true;
+        }
+
+        var leftCenter = left.Top + left.Height / 2;
+        var rightCenter = right.Top + right.Height / 2;
+        var tolerance = Math.Max(6, Math.Max(left.Height, right.Height) / 2);
+        return Math.Abs(leftCenter - rightCenter) <= tolerance;
     }
 
     private async Task EnsureExitRewardPage()
