@@ -78,7 +78,7 @@ public partial class App : Application
                     .MinimumLevel.Debug()
                     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
                     .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Warning);
-                if (all.MaskWindowConfig.MaskEnabled)
+                if (all.MaskWindowConfig is { MaskEnabled: true, ShowLogBox: true })
                 {
                     loggerConfiguration.WriteTo.RichTextBox(richTextBox, LogEventLevel.Information,
                         "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}");
@@ -151,6 +151,7 @@ public partial class App : Application
                 // services.AddSingleton<TcgViewModel>();
 
                 // My Services
+                services.AddSingleton<OverlayMetricsService>();
                 services.AddSingleton<TaskTriggerDispatcher>();
                 services.AddSingleton<NotificationService>();
                 services.AddHostedService(sp => sp.GetRequiredService<NotificationService>());
@@ -210,6 +211,7 @@ public partial class App : Application
     /// </summary>
     protected override async void OnStartup(StartupEventArgs e)
     {
+        Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.Normal;
         // Wine 平台适配
         WinePlatformAddon.ApplyApplicationConfig();
         base.OnStartup(e);
@@ -282,6 +284,12 @@ public partial class App : Application
     {
         try
         {
+            // 忽略V8引擎释放后pending的Task回调抛出的异常
+            if (IsV8EngineReleasedException(e.Exception))
+            {
+                return;
+            }
+
             HandleException(e.Exception);
         }
         catch (Exception ex)
@@ -292,6 +300,21 @@ public partial class App : Application
         {
             e.SetObserved();
         }
+    }
+
+    private static bool IsV8EngineReleasedException(Exception? ex)
+    {
+        while (ex != null)
+        {
+            if (ex.Message?.Contains("V8 object has been released") == true)
+            {
+                return true;
+            }
+
+            ex = ex.InnerException;
+        }
+
+        return false;
     }
 
     //非UI线程未捕获异常处理事件(例如自己创建的一个子线程)

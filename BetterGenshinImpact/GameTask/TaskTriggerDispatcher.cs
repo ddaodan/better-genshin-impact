@@ -16,6 +16,8 @@ using BetterGenshinImpact.GameTask.Common.BgiVision;
 using BetterGenshinImpact.GameTask.GameLoading;
 using Fischless.GameCapture.Graphics;
 using BetterGenshinImpact.Service;
+using BetterGenshinImpact.Service.Model;
+using BetterGenshinImpact.Service.Model.OverlayMetric;
 using Vanara.PInvoke;
 using Rect = OpenCvSharp.Rect;
 
@@ -24,6 +26,7 @@ namespace BetterGenshinImpact.GameTask
     public class TaskTriggerDispatcher : IDisposable
     {
         private readonly ILogger<TaskTriggerDispatcher> _logger = App.GetLogger<TaskTriggerDispatcher>();
+        private readonly OverlayMetricsService? _metricsService = App.GetService<OverlayMetricsService>();
 
         private static TaskTriggerDispatcher? _instance;
 
@@ -173,6 +176,7 @@ namespace BetterGenshinImpact.GameTask
             _gameRect = RECT.Empty;
             _prevGameActive = false;
             PictureInPictureService.Hide(resetManual: true);
+            HtmlMaskWindow.CloseAll();
             if (_winEventHookMoveSize != default)
             {
                 User32.UnhookWinEvent(_winEventHookMoveSize);
@@ -212,11 +216,14 @@ namespace BetterGenshinImpact.GameTask
         public void Tick(object? sender, EventArgs e)
         {
             var hasLock = false;
+            var tickMetrics = new DispatcherTickMetrics();
             try
             {
+                // 上一帧还没处理完时只记录跳过次数，不等待锁；等待时间不应混入本轮处理耗时。
                 Monitor.TryEnter(_locker, ref hasLock);
                 if (!hasLock)
                 {
+                    _metricsService?.RecordSkippedTick();
                     // 正在执行时跳过
                     return;
                 }
@@ -238,6 +245,7 @@ namespace BetterGenshinImpact.GameTask
                     PictureInPictureService.Hide(resetManual: true);
                     UiTaskStopTickEvent?.Invoke(sender, e);
                     maskWindow.Invoke(maskWindow.HideSelf);
+                    HtmlMaskWindow.HideAll();
                     return;
                 }
                 
@@ -278,6 +286,7 @@ namespace BetterGenshinImpact.GameTask
                     {
                         // Debug.WriteLine(pName + "：hide mask window");
                         maskWindow.Invoke(() => { maskWindow.HideSelf(); });
+                        HtmlMaskWindow.HideAll();
                     }
 
                     _prevGameActive = active;
@@ -315,7 +324,7 @@ namespace BetterGenshinImpact.GameTask
                     PictureInPictureService.Hide(resetManual: true);
                     // if (!_prevGameActive)
                     // {
-                    maskWindow.Invoke(() =>
+                    maskWindow.BeginInvoke(() =>
                     {
                         if (maskWindow.IsExist())
                         {
@@ -326,6 +335,7 @@ namespace BetterGenshinImpact.GameTask
                             }
                         }
                     });
+                    HtmlMaskWindow.ShowAll();
                     // }
 
                     _prevGameActive = active;
@@ -347,8 +357,12 @@ namespace BetterGenshinImpact.GameTask
                 _frameIndex = (_frameIndex + 1) % (int)(CaptureContent.MaxFrameIndexSecond * 1000d / _timer.Interval);
 
                 var speedTimer = new SpeedTimer();
+                // 从真正开始截图处计时，前面的窗口状态检查不计入 BetterGI 本轮处理耗时。
+                tickMetrics.Begin();
                 // 捕获游戏画面
-                var bitmap = GameCapture.Capture();
+                var captureFrame = GameCapture.Capture();
+                var bitmap = captureFrame?.Frame;
+                tickMetrics.EndCapture();
                 speedTimer.Record("截图");
 
                 if (bitmap == null)
@@ -409,7 +423,10 @@ namespace BetterGenshinImpact.GameTask
                             if ((PrevGameUiCategory != content.CurrentGameUiCategory || (DateTime.Now - PrevGameUiChangeTime).TotalSeconds <= 30) // UI变化了后的30s内则所有触发器执行一遍
                                 || trigger.SupportedGameUiCategory == content.CurrentGameUiCategory)
                             {
+                                // 触发器耗时只累计触发器执行本体，便于和截图耗时、总处理耗时拆开观察。
+                                var triggerStart = Stopwatch.GetTimestamp();
                                 trigger.OnCapture(content);
+                                tickMetrics.AddTriggerCost(triggerStart);
                                 speedTimer.Record(trigger.Name);
                             }
                         }
@@ -422,6 +439,8 @@ namespace BetterGenshinImpact.GameTask
             }
             finally
             {
+                tickMetrics.EndProcessing();
+
                 if ((DateTime.Now - _prevManualGc).TotalSeconds > 2)
                 {
                     GC.Collect();
@@ -431,6 +450,12 @@ namespace BetterGenshinImpact.GameTask
                 if (hasLock)
                 {
                     Monitor.Exit(_locker);
+                }
+
+                if (tickMetrics.IsEnabled)
+                {
+                    // 释放调度锁后再发布指标，避免 UI 订阅回调参与实时触发器锁竞争。
+                    tickMetrics.Publish(_metricsService);
                 }
             }
         }
@@ -449,19 +474,25 @@ namespace BetterGenshinImpact.GameTask
             }
             else if (_gameRect != currentRect)
             {
-                // 后面大概可以取消掉这个判断，支持随意移动变化窗口 —— 不支持 需要考虑的问题太多了
-                if ((_gameRect.Width != currentRect.Width || _gameRect.Height != currentRect.Height)
-                    && !SizeIsZero(_gameRect) && !SizeIsZero(currentRect))
+                // // 后面大概可以取消掉这个判断，支持随意移动变化窗口 —— 现在已经可以取消了，但是一些Assets要重新加载
+                // if ((_gameRect.Width != currentRect.Width || _gameRect.Height != currentRect.Height)
+                //     && !SizeIsZero(_gameRect) && !SizeIsZero(currentRect))
+                // {
+                //     _logger.LogError("► 游戏窗口大小发生变化 {W}x{H}->{CW}x{CH}, 自动重启截图器中...", _gameRect.Width, _gameRect.Height, currentRect.Width, currentRect.Height);
+                //     UiTaskStopTickEvent?.Invoke(null, EventArgs.Empty);
+                //     UiTaskStartTickEvent?.Invoke(null, EventArgs.Empty);
+                //     _logger.LogInformation("► 游戏窗口大小发生变化，截图器重启完成！");
+                // }
+
+                if ((_gameRect.Width != currentRect.Width || _gameRect.Height != currentRect.Height) && !SizeIsZero(_gameRect) && !SizeIsZero(currentRect))
                 {
-                    _logger.LogError("► 游戏窗口大小发生变化 {W}x{H}->{CW}x{CH}, 自动重启截图器中...", _gameRect.Width, _gameRect.Height, currentRect.Width, currentRect.Height);
-                    UiTaskStopTickEvent?.Invoke(null, EventArgs.Empty);
-                    UiTaskStartTickEvent?.Invoke(null, EventArgs.Empty);
-                    _logger.LogInformation("► 游戏窗口大小发生变化，截图器重启完成！");
+                    _logger.LogError("► 游戏窗口大小发生变化 {W}x{H}->{CW}x{CH}, 无需重新启动截图器。", _gameRect.Width, _gameRect.Height, currentRect.Width, currentRect.Height);
                 }
 
                 _gameRect = new RECT(currentRect);
                 TaskContext.Instance().SystemInfo.CaptureAreaRect = currentRect;
                 MaskWindow.Instance().RefreshPosition();
+                HtmlMaskWindow.UpdateAllPositions();
                 return true;
             }
 

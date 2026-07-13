@@ -56,6 +56,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         RotaryFactor = autoFightConfig.FinishDetectConfig.RotaryFactor;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
+        ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
     }
 
     public FightFinishDetectConfig FinishDetectConfig { get; set; } = new();
@@ -84,6 +85,11 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public bool QinDoublePickUp { get; set; } = false;
     public static bool SwimmingEnabled  { get; set; } = false;
 
+    /// <summary>
+    /// 基于经验值判断是否执行战后拾取
+    /// </summary>
+    public bool ExpBasedPickupEnabled { get; set; } = false;
+
     public AutoFightParam(string? strategyName = null) : base(null, null)
     {
         SetCombatStrategyPath(strategyName);
@@ -109,6 +115,34 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         {
             CombatStrategyPath =  Global.Absolute(@"User\AutoFight\" + strategyName + ".txt");
         }
+    }
+
+    /// <summary>
+    /// 解析策略文件路径，自动检测 .json 或 .txt 扩展名。
+    /// 优先检测 .json，未命中则回退 .txt。
+    /// </summary>
+    /// <param name="strategyName">策略名称（不含扩展名）</param>
+    /// <returns>(完整路径, 类型标识: "json" / "txt")</returns>
+    public static (string path, string type) ResolveStrategyPath(string strategyName)
+    {
+        if ("根据队伍自动选择".Equals(strategyName))
+        {
+            var dir = Global.Absolute(@"User\AutoFight\");
+            return (dir, "txt");
+        }
+
+        var baseDir = Global.Absolute(@"User\AutoFight\");
+
+        // 优先检测 .json
+        var jsonPath = System.IO.Path.Combine(baseDir, strategyName + ".json");
+        if (System.IO.File.Exists(jsonPath))
+        {
+            return (jsonPath, "json");
+        }
+
+        // 回退 .txt
+        var txtPath = System.IO.Path.Combine(baseDir, strategyName + ".txt");
+        return (txtPath, "txt");
     }
 
     public void SetDefault()
@@ -140,5 +174,6 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         GuardianAvatarHold = autoFightConfig.GuardianAvatarHold;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
+        ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
     }
 }

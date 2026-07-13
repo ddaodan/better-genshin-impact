@@ -1,8 +1,6 @@
 using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.GameTask.AutoFight.Assets;
-using BetterGenshinImpact.GameTask.AutoSkip.Assets;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
-using BetterGenshinImpact.GameTask.GameLoading.Assets;
 using BetterGenshinImpact.GameTask.Model.Area;
 using BetterGenshinImpact.GameTask.QuickTeleport.Assets;
 using BetterGenshinImpact.Helpers;
@@ -11,8 +9,10 @@ using OpenCvSharp;
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 
 namespace BetterGenshinImpact.GameTask.Common.BgiVision;
@@ -76,7 +76,7 @@ public static partial class Bv
     /// <returns></returns>
     public static bool IsInMainUi(ImageRegion captureRa)
     {
-        using var ra = captureRa.Find(ElementAssets.Instance.PaimonMenuRo);
+        using var ra = captureRa.Find(ElementRecognition.Get("PaimonMenu", captureRa));
         return ra.IsExist() && !IsInRevivePrompt(captureRa);
     }
 
@@ -108,7 +108,7 @@ public static partial class Bv
     /// <returns></returns>
     public static bool IsInDomain(ImageRegion captureRa)
     {
-        using var matchRegion = captureRa.Find(ElementAssets.Instance.InDomainRo);
+        using var matchRegion = captureRa.Find(ElementRecognition.Get("InDomain", captureRa));
         if (matchRegion.IsEmpty())
         {
             return false;
@@ -147,7 +147,7 @@ public static partial class Bv
     /// <returns></returns>
     public static bool IsInAnyClosableUi(ImageRegion captureRa)
     {
-        using var ra = captureRa.Find(QuickTeleportAssets.Instance.MapCloseButtonRo);
+        using var ra = captureRa.Find(RecognitionAssets.Get("QuickTeleport", "MapCloseButton", captureRa));
         return ra.IsExist();
     }
 
@@ -158,7 +158,7 @@ public static partial class Bv
     /// <returns></returns>
     public static bool IsInPartyViewUi(ImageRegion captureRa)
     {
-        using var ra = captureRa.Find(ElementAssets.Instance.PartyBtnChooseView);
+        using var ra = captureRa.Find(ElementRecognition.Get("PartyBtnChooseView", captureRa));
         return ra.IsExist();
     }
 
@@ -184,13 +184,13 @@ public static partial class Bv
     /// <returns></returns>
     public static bool IsInBigMapUi(ImageRegion captureRa)
     {
-        using var scaleRa = captureRa.Find(QuickTeleportAssets.Instance.MapScaleButtonRo);
+        using var scaleRa = captureRa.Find(RecognitionAssets.Get("QuickTeleport", "MapScaleButton", captureRa));
         if (scaleRa.IsExist())
         {
             return true;
         }
 
-        using var settingsRa = captureRa.Find(QuickTeleportAssets.Instance.MapSettingsButtonRo);
+        using var settingsRa = captureRa.Find(RecognitionAssets.Get("QuickTeleport", "MapSettingsButton", captureRa));
         return settingsRa.IsExist();
     }
 
@@ -202,13 +202,13 @@ public static partial class Bv
     /// <returns></returns>
     public static bool BigMapIsUnderground(ImageRegion captureRa)
     {
-        using var ra = captureRa.Find(QuickTeleportAssets.Instance.MapUndergroundSwitchButtonRo);
+        using var ra = captureRa.Find(RecognitionAssets.Get("QuickTeleport", "MapUndergroundSwitchButton", captureRa));
         return ra.IsExist();
     }
 
     public static double GetBigMapScale(ImageRegion region)
     {
-        using var scaleRa = region.Find(QuickTeleportAssets.Instance.MapScaleButtonRo);
+        using var scaleRa = region.Find(RecognitionAssets.Get("QuickTeleport", "MapScaleButton", region));
         if (scaleRa.IsEmpty())
         {
             throw new Exception("当前未处于大地图界面，不能使用GetBigMapScale方法");
@@ -224,9 +224,9 @@ public static partial class Bv
 
     public static MotionStatus GetMotionStatus(ImageRegion captureRa)
     {
-        using var spaceRa = captureRa.Find(ElementAssets.Instance.SpaceKey);
+        using var spaceRa = captureRa.Find(ElementRecognition.Get("SpaceKey", captureRa));
         var spaceExist = spaceRa.IsExist();
-        using var xRa = captureRa.Find(ElementAssets.Instance.XKey);
+        using var xRa = captureRa.Find(ElementRecognition.Get("XKey", captureRa));
         var xExist = xRa.IsExist();
         if (spaceExist)
         {
@@ -245,7 +245,7 @@ public static partial class Bv
     /// <returns></returns>
     internal static bool IsInRevivePrompt(ImageRegion region)
     {
-        using var confirmRectArea = region.Find(AutoFightAssets.Instance.ConfirmRa);
+        using var confirmRectArea = region.Find(RecognitionAssets.Get("AutoFight", "Confirm", region));
         if (!confirmRectArea.IsEmpty())
         {
             var list = region.FindMulti(new RecognitionObject
@@ -313,13 +313,13 @@ public static partial class Bv
     {
         var ra = captureRa;
 
-        using var girlRa = ra.Find(GameLoadingAssets.Instance.GirlMoonRo);
+        using var girlRa = ra.Find(RecognitionAssets.Get("GameLoading", "GirlMoon", ra));
         if (girlRa.IsExist())
         {
             return true;
         }
 
-        using var moonRa = ra.Find(GameLoadingAssets.Instance.WelkinMoonRo);
+        using var moonRa = ra.Find(RecognitionAssets.Get("GameLoading", "WelkinMoon", ra));
         return moonRa.IsExist();
     }
 
@@ -330,7 +330,7 @@ public static partial class Bv
     /// <returns></returns>
     public static bool IsInTalkUi(ImageRegion captureRa)
     {
-        using var ra = captureRa.Find(AutoSkipAssets.Instance.DisabledUiButtonRo);
+        using var ra = captureRa.Find(RecognitionAssets.Get("AutoSkip", "DisabledUiButton", captureRa.Width, captureRa.Height));
         return ra.IsExist();
     }
 
@@ -357,8 +357,45 @@ public static partial class Bv
     /// <returns></returns>
     public static bool IsInPromptDialog(ImageRegion captureRa)
     {
-        using var ra = captureRa.Find(ElementAssets.Instance.PromptDialogLeftBottomStar);
+        using var ra = captureRa.Find(ElementRecognition.Get("PromptDialogLeftBottomStar", captureRa));
         return ra.IsExist();
+    }
+    
+    
+        
+    /// <summary>
+    /// 通过 OCR 识别当前角色的 UID
+    /// </summary>
+    /// <returns>UID 数字，如果识别失败则返回 0</returns>
+    public static int Uid()
+    {
+        try
+        {
+            var x = 1683;
+            var y = 1051;
+            var width = 234;
+            var height = 28;
+            var scaleTo1080PRatio = TaskContext.Instance().SystemInfo.ScaleTo1080PRatio;
+            
+            x = (int)Math.Round(x * scaleTo1080PRatio);
+            y = (int)Math.Round(y * scaleTo1080PRatio);
+            width = (int)Math.Round(width * scaleTo1080PRatio);
+            height = (int)Math.Round(height * scaleTo1080PRatio);
+            
+            using var region = TaskControl.CaptureToRectArea();
+            var recognitionObjectOcr = RecognitionObject.Ocr(x, y, width, height);
+            var res = region.Find(recognitionObjectOcr);
+            if (res?.Text == null) return 0;
+            var matches = Regex.Matches(res.Text, @"\d+");
+            if (matches.Count == 0) return 0;
+            var numberStr = string.Join("", matches.Select(m => m.Value));
+            return int.TryParse(numberStr, out var uid) ? uid : 0;
+        }
+        catch (Exception e)
+        {
+            TaskControl.Logger.LogError(e, "OCR 识别 UID 异常");
+            return 0;
+        }
     }
 }
 

@@ -16,12 +16,14 @@ using BetterGenshinImpact.GameTask.Common.Map.Maps.Base;
 using BetterGenshinImpact.GameTask.Common.Exceptions;
 using BetterGenshinImpact.GameTask.Common.Map.Maps;
 using BetterGenshinImpact.Helpers.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace BetterGenshinImpact.Core.Script.Dependence;
 
 public class Genshin
 {
     private RECT captureAreaRect = TaskContext.Instance().SystemInfo.CaptureAreaRect;
+    private readonly ILogger<Genshin> _logger = App.GetLogger<Genshin>();
 
     /// <summary>
     /// 游戏宽度
@@ -42,6 +44,15 @@ public class Genshin
     /// 系统屏幕的DPI缩放比例
     /// </summary>
     public double ScreenDpiScale => TaskContext.Instance().DpiScale;
+    
+    /// <summary>
+    /// 通过 OCR 识别当前角色的 UID
+    /// </summary>
+    /// <returns>UID 数字，如果识别失败则返回 0</returns>
+    public Task<int> Uid()
+    {
+        return Task.FromResult(Bv.Uid());
+    }
     
     public Lazy<NavigationInstance> LazyNavigationInstance { get; } = new(() =>
     {
@@ -65,7 +76,6 @@ public class Genshin
     {
         await new TpTask(CancellationContext.Instance.Cts.Token).Tp(x, y, mapName, force);
     }
-
 
     public async Task Tp(double x, double y, bool force)
     {
@@ -207,6 +217,11 @@ public class Genshin
     {
         return GetPositionFromMap(MapTypes.Teyvat.ToString());
     }
+    
+    public Point2f? GetPositionFromMapWithMatchingMethod(string matchingMethod)
+    {
+        return GetPositionFromMapWithMatchingMethod(nameof(MapTypes.Teyvat), matchingMethod);
+    }
 
     public float GetCameraOrientation()
     {
@@ -222,13 +237,17 @@ public class Genshin
     /// <returns>包含X和Y坐标的Point2f结构体</returns>
     public Point2f? GetPositionFromMap(string mapName, int cacheTimeMs = 900)
     {
+        var matchingMethod = TaskContext.Instance().Config.PathingConditionConfig.MapMatchingMethod;
+        return GetPositionFromMapWithMatchingMethod(mapName,matchingMethod, cacheTimeMs);
+    }
+    
+    public Point2f? GetPositionFromMapWithMatchingMethod(string mapName, string matchingMethod, int cacheTimeMs = 900)
+    {
         var imageRegion = CaptureToRectArea();
         if (!Bv.IsInMainUi(imageRegion))
         {
             throw new InvalidOperationException("不在主界面，无法识别小地图坐标");
         }
-
-        var matchingMethod = TaskContext.Instance().Config.PathingConditionConfig.MapMatchingMethod;
         return MapManager.GetMap(mapName, matchingMethod)
             .ConvertImageCoordinatesToGenshinMapCoordinates(LazyNavigationInstance.Value
                 .GetPositionStableByCache(imageRegion, mapName, matchingMethod, cacheTimeMs));
@@ -269,12 +288,37 @@ public class Genshin
         {
             return await new SwitchPartyTask().Start(partyName, CancellationContext.Instance.Cts.Token);
         }
-        catch (PartySetupFailedException ex)
+        catch (PartySetupFailedException)
         {
-            return false;//释放失败状态到JS，否则失败后会退出任务。
+            return false;//释放失败状态给调用方，否则失败后会退出任务。
         }
     }
-    
+
+    /// <summary>
+    /// 按槽位重组当前队伍角色。
+    /// </summary>
+    /// <param name="slot1">1 号位角色名。</param>
+    /// <param name="slot2">2 号位角色名。</param>
+    /// <param name="slot3">3 号位角色名。</param>
+    /// <param name="slot4">4 号位角色名。</param>
+    /// <returns>完成保存并返回主界面返回 true；参数无效、目标角色未找到或流程失败返回 false。</returns>
+    /// <remarks>
+    /// 未传入的槽位默认跳过；空字符串表示跳过对应槽位。
+    /// 调用示例：<c>await genshin.SwitchCharacter("胡桃", "夜兰", "", "钟离");</c>
+    /// 该方法表示重组队伍槽位角色，不是按数字键切换当前出战角色。
+    /// </remarks>
+    public async Task<bool> SwitchCharacter(string slot1 = "", string slot2 = "", string slot3 = "", string slot4 = "")
+    {
+        try
+        {
+            return await new SwitchCharacterStateMachineTask().Start(slot1, slot2, slot3, slot4, CancellationContext.Instance.Cts.Token);
+        }
+        catch (PartySetupFailedException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// 清除当前调度器的队伍缓存
     /// </summary>
@@ -341,6 +385,18 @@ public class Genshin
     public async Task GoToCraftingBench(string country)
     {
         await new GoToCraftingBenchTask().Start(country, CancellationContext.Instance.Cts.Token);
+    }
+
+    /// <summary>
+    /// 在当前已打开的合成界面中合成指定材料。
+    /// </summary>
+    /// <param name="materialName">目标成品材料名。</param>
+    /// <param name="quantity">目标合成个数，必须大于 0。</param>
+    /// <param name="materialType">材料筛选类型；为空时从物品模型 CSV 中读取。</param>
+    /// <returns>合成执行结果。</returns>
+    public async Task<CraftMaterialResult> CraftMaterial(string materialName, int quantity, string? materialType = null)
+    {
+        return await new CraftMaterialTask(materialName, quantity, materialType).Start(CancellationContext.Instance.Cts.Token);
     }
 
     /// <summary>
@@ -418,4 +474,17 @@ public class Genshin
             throw new ArgumentException($"无效的分钟值: {minute}，必须是 0-59 之间的整数字符", nameof(minute));
         await new SetTimeTask().Start(h, m, CancellationContext.Instance.Cts.Token, skip);
     }
+
+    // /// <summary>
+    // /// 莉奈娅挖矿，调试使用，暂时注释
+    // /// </summary>
+    // /// <param name="mineCount">射箭次数，默认1</param>
+    // /// <param name="scanRounds">大循环寻矿次数。不传则默认5；传单个数字时与射箭次数相同</param>
+    // public async Task StartMining(int? mineCount = null, int? scanRounds = null)
+    // {
+    //     var actualMine = mineCount ?? 1;
+    //     var actualScan = scanRounds ?? (mineCount ?? 5);
+    //     if (actualScan < actualMine) actualScan = actualMine;
+    //     await new LinneaMiningTask(actualScan, actualMine).Start(CancellationContext.Instance.Cts.Token);
+    // }
 }

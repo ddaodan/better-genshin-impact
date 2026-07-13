@@ -25,7 +25,7 @@ public class BlessingOfTheWelkinMoonTask
             if (t.Hour == 4 && t.Minute < 10)
             {
                 using var ra = CaptureToRectArea();
-                if (Bv.IsInBlessingOfTheWelkinMoon(ra) || ra.Find(ElementAssets.Instance.PrimogemRo).IsExist())
+                if (Bv.IsInBlessingOfTheWelkinMoon(ra) || ra.Find(ElementRecognition.Get("Primogem", ra)).IsExist())
                 {
                     Logger.LogInformation("检测到空月祝福界面，自动点击");
                     GameCaptureRegion.GameRegion1080PPosMove(100, 100);
@@ -34,8 +34,9 @@ public class BlessingOfTheWelkinMoonTask
                         if (j == 0)
                         {
                             // 双击快速跳过
-                            TaskContext.Instance().PostMessageSimulator.LeftButtonClickBackground();
-                            TaskContext.Instance().PostMessageSimulator.LeftButtonClickBackground();
+                            GameCaptureRegion.GameRegion1080PPosClick(100, 100);
+                            await Task.Delay(100, ct);
+                            GameCaptureRegion.GameRegion1080PPosClick(100, 100);
                         }
                         await Delay(500, ct);
                         using var ra2 = CaptureToRectArea();
@@ -44,7 +45,7 @@ public class BlessingOfTheWelkinMoonTask
                             // 仍在空月祝福界面
                             j = 0;
                         }
-                        else if (ra2.Find(ElementAssets.Instance.PrimogemRo).IsExist())
+                        else if (ra2.Find(ElementRecognition.Get("Primogem", ra2)).IsExist())
                         {
                             // 仍在原石界面
                             j = 0;

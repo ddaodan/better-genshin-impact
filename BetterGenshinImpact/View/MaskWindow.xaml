@@ -288,6 +288,95 @@
                         </d:FlowDocument>
                     </RichTextBox>
                 </overlay:AdjustableOverlayItem>
+
+                <!-- 指标栏复用可拖拽容器；单项固定宽度，只允许在指标之间换行，避免中文标签被拆开。 -->
+                <overlay:AdjustableOverlayItem x:Name="MetricsWrapper"
+                                               Padding="4,2"
+                                               Background="#00000000"
+                                               BorderBrush="#00000000"
+                                               BorderThickness="0"
+                                               MinWidth="260"
+                                               MinHeight="24"
+                                               IsEditEnabled="{Binding Config.MaskWindowConfig.OverlayLayoutEditEnabled}"
+                                               LayoutKey="Metrics"
+                                               SnapsToDevicePixels="True"
+                                               UseLayoutRounding="True"
+                                               Visibility="{Binding IsOverlayMetricsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Canvas.Left>
+                        <MultiBinding Converter="{StaticResource OverlayRelativeOrAbsoluteConverter}">
+                            <Binding Path="Config.MaskWindowConfig.MetricsLeftRatio" />
+                            <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="ActualWidth" />
+                        </MultiBinding>
+                    </Canvas.Left>
+                    <Canvas.Top>
+                        <MultiBinding Converter="{StaticResource OverlayRelativeOrAbsoluteConverter}">
+                            <Binding Path="Config.MaskWindowConfig.MetricsTopRatio" />
+                            <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="ActualHeight" />
+                        </MultiBinding>
+                    </Canvas.Top>
+                    <overlay:AdjustableOverlayItem.Width>
+                        <MultiBinding Converter="{StaticResource OverlayRelativeOrAbsoluteConverter}">
+                            <Binding Path="Config.MaskWindowConfig.MetricsWidthRatio" />
+                            <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="ActualWidth" />
+                        </MultiBinding>
+                    </overlay:AdjustableOverlayItem.Width>
+                    <overlay:AdjustableOverlayItem.Height>
+                        <MultiBinding Converter="{StaticResource OverlayRelativeOrAbsoluteConverter}">
+                            <Binding Path="Config.MaskWindowConfig.MetricsHeightRatio" />
+                            <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="ActualHeight" />
+                        </MultiBinding>
+                    </overlay:AdjustableOverlayItem.Height>
+                    <b:Interaction.Triggers>
+                        <b:EventTrigger EventName="LayoutCommitted">
+                            <b:InvokeCommandAction Command="{Binding OverlayLayoutCommittedCommand}"
+                                                   PassEventArgsToCommand="True" />
+                        </b:EventTrigger>
+                        <b:EventTrigger EventName="PreviewMouseRightButtonDown">
+                            <b:InvokeCommandAction Command="{Binding ExitOverlayLayoutEditModeCommand}" />
+                        </b:EventTrigger>
+                    </b:Interaction.Triggers>
+                    <overlay:AdjustableOverlayItem.Effect>
+                        <DropShadowEffect Opacity="0.4" BlurRadius="4" ShadowDepth="0" />
+                    </overlay:AdjustableOverlayItem.Effect>
+                    <ItemsControl HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Top"
+                                  ClipToBounds="True"
+                                  IsHitTestVisible="False"
+                                  ItemsSource="{Binding OverlayMetricDisplayItems}"
+                                  Opacity="{Binding Config.MaskWindowConfig.TextOpacity}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <!-- 列宽和设置页的三列顺序保持一致，拖窄后也按完整指标项折行。 -->
+                                <WrapPanel ItemWidth="116" ItemHeight="16" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Width="116" Height="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               FontFamily="Cascadia Mono, Consolas, Courier New, monospace, /Resources/Fonts/MiSans-Regular.ttf#MiSans"
+                                               FontSize="12"
+                                               Foreground="LightGray"
+                                               LineHeight="15"
+                                               Text="{Binding Name}"
+                                               TextWrapping="NoWrap" />
+                                    <TextBlock Grid.Column="1"
+                                               FontFamily="Cascadia Mono, Consolas, Courier New, monospace, /Resources/Fonts/MiSans-Regular.ttf#MiSans"
+                                               FontSize="12"
+                                               Foreground="LightGray"
+                                               LineHeight="15"
+                                               Text="{Binding Value}"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </overlay:AdjustableOverlayItem>
             </Canvas>
 
             <Grid Grid.Row="0"
@@ -423,7 +512,7 @@
                     CornerRadius="4"
                     Opacity="0.5"
                     IsHitTestVisible="False"
-                    Visibility="{Binding Config.MaskWindowConfig.ShowFps, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    Visibility="Collapsed">
                 <TextBlock HorizontalAlignment="Center"
                            VerticalAlignment="Center"
                            FontFamily="{StaticResource DigitalThemeFontFamily}"
@@ -515,6 +604,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0"
                                        FontSize="14"
@@ -523,6 +613,32 @@
                                        Text="{Binding Title}"
                                        TextTrimming="CharacterEllipsis" />
                             <ui:Button Grid.Column="1"
+                                       MinWidth="58"
+                                       Height="28"
+                                       Padding="8,0"
+                                       Margin="8,-2,0,0"
+                                       Background="#2FFFFFFF"
+                                       BorderBrush="#26FFFFFF"
+                                       Cursor="Hand"
+                                       Icon="{ui:SymbolIcon EyeOff24}"
+                                       Content="隐藏"
+                                       ToolTip="隐藏"
+                                       Visibility="{Binding IsCurrentPointHidden, Converter={StaticResource BooleanToVisibilityRevertConverter}}"
+                                       Command="{Binding ToggleHiddenCommand}" />
+                            <ui:Button Grid.Column="1"
+                                       MinWidth="58"
+                                       Height="28"
+                                       Padding="8,0"
+                                       Margin="8,-2,0,0"
+                                       Background="#2FFFFFFF"
+                                       BorderBrush="#26FFFFFF"
+                                       Cursor="Hand"
+                                       Icon="{ui:SymbolIcon Eye24}"
+                                       Content="显示"
+                                       ToolTip="显示"
+                                       Visibility="{Binding IsCurrentPointHidden, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                       Command="{Binding ToggleHiddenCommand}" />
+                            <ui:Button Grid.Column="2"
                                        Width="28"
                                        Height="28"
                                        Padding="0"
@@ -814,6 +930,31 @@
                                                         PreviewMouseLeftButtonDown="MapLabelSearchTextBox_OnPreviewMouseLeftButtonDown" />
 
                                             <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0">
+                                                <TextBlock VerticalAlignment="Center"
+                                                           Margin="0,0,8,0"
+                                                           Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
+                                                           ToolTip="当前显示/全部标点"
+                                                           Text="{Binding MapPointVisibilitySummary}" />
+                                                <ui:Button Width="32"
+                                                           Height="32"
+                                                           Margin="0,0,6,0"
+                                                           Background="#FF2B2F37"
+                                                           Foreground="White"
+                                                           Cursor="Hand"
+                                                           Icon="{ui:SymbolIcon EyeOff24}"
+                                                           ToolTip="全部隐藏"
+                                                           IsEnabled="{Binding HasMapPoints}"
+                                                           Command="{Binding HideAllMapPointsCommand}" />
+                                                <ui:Button Width="32"
+                                                           Height="32"
+                                                           Margin="0,0,6,0"
+                                                           Background="#FF2B2F37"
+                                                           Foreground="White"
+                                                           Cursor="Hand"
+                                                           Icon="{ui:SymbolIcon Eye24}"
+                                                           ToolTip="全部显示"
+                                                           IsEnabled="{Binding HasHiddenMapPoints}"
+                                                           Command="{Binding ShowAllMapPointsCommand}" />
                                                 <ui:Button
                                                            Width="32"
                                                            Height="32"

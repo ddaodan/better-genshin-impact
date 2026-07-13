@@ -25,6 +25,7 @@ using BetterGenshinImpact.GameTask.AutoPick.Assets;
 using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
 using BetterGenshinImpact.GameTask.Common;
+using BetterGenshinImpact.GameTask.AutoFight.Assets;
 
 namespace BetterGenshinImpact.GameTask.AutoFight;
 
@@ -299,6 +300,17 @@ public class AutoFightTask : ISoloTask
         
         AutoFightSeek.RotationCount= 0; // 重置旋转次数
         
+        // 基于经验值的战后拾取检测：在战斗过程中异步检测精英怪经验值图标
+        // 仅在万叶拾取总开关开启时才启动经验值检测
+        ExperienceDetector? expDetector = null;
+        if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpBasedPickupEnabled)
+        {
+            using var gameCaptureRegion = CaptureToRectArea();
+            var expRos = AutoFightAssets.Get(gameCaptureRegion).ExperienceRecognitionObjects;
+            expDetector = new ExperienceDetector(expRos, cts2.Token);
+            expDetector.Start();
+        }
+
         // 战斗操作
         var fightTask = Task.Run(async () =>
         {
@@ -427,7 +439,7 @@ public class AutoFightTask : ISoloTask
                         }
 
                         #region check动作触发战斗结束检测
-                        if (command.Method == Method.Check)
+                        if (command.Method == Method.Check && _taskParam.FightFinishDetectEnabled)
                         {
                             fightEndFlag = await CheckFightFinish(delayTime, detectDelayTime);
                         }
@@ -489,6 +501,50 @@ public class AutoFightTask : ISoloTask
         }, cts2.Token);
 
         await fightTask;
+
+        try
+        {
+            // 基于经验值检测结果的拾取判断
+            if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpBasedPickupEnabled && expDetector != null)
+            {
+                // 战斗结束与怪物死亡可能几乎同时发生，检测器可能还没来得及捕获经验值图标
+                // 保持检测器运行，每 100ms 轮询一次结果，最多等待 1.1 秒
+                if (!expDetector.HasDetectedExperience)
+                {
+                    Logger.LogInformation("基于经验值判断：等待经验值检测结果");
+                    var waitMs = 1100;
+                    while (!expDetector.HasDetectedExperience && waitMs > 0)
+                    {
+                        await Delay(100, ct);
+                        waitMs -= 100;
+                    }
+                }
+
+                await expDetector.StopAsync();
+                var shouldPickup = expDetector.HasDetectedExperience;
+                Logger.LogInformation("基于经验值判断：{Result} 战后拾取", shouldPickup ? "执行" : "不执行");
+
+                if (!shouldPickup)
+                {
+                    // 经验值检测未通过，跳过拾取（但仍执行扫描拾取逻辑）
+                    if (_taskParam is { PickDropsAfterFightEnabled: true })
+                    {
+                        await new ScanPickTask().Start(ct, _taskParam.PickDropsAfterFightSeconds);
+                    }
+                    return;
+                }
+            }
+        }
+        finally
+        {
+            // 确保检测器在任何路径（异常/取消/正常）都被停止和释放
+            if (expDetector != null)
+            {
+                await expDetector.StopAsync();
+                expDetector.Dispose();
+            }
+        }
+
         if (_taskParam.BattleThresholdForLoot>=2 && countFight < _taskParam.BattleThresholdForLoot)
         {
             Logger.LogInformation($"战斗人次（{countFight}）低于配置人次（{_taskParam.BattleThresholdForLoot}），跳过此次拾取！");
@@ -515,7 +571,7 @@ public class AutoFightTask : ISoloTask
                 {
                     Simulation.SendInput.SimulateAction(GIActions.OpenPartySetupScreen);
                     var enterGameAppear = await NewRetry.WaitForElementAppear(
-                        ElementAssets.Instance.PartyBtnChooseView,
+                        ElementRecognition.Get("PartyBtnChooseView"),
                         () => { },
                         ct,
                         15,
@@ -536,7 +592,7 @@ public class AutoFightTask : ISoloTask
                 while(timeWaitStart < 6000)
                 {
                     using var ra = CaptureToRectArea();
-                    var partyViewBtn = ra.Find(ElementAssets.Instance.PartyBtnChooseView);
+                    var partyViewBtn = ra.Find(ElementRecognition.Get("PartyBtnChooseView", ra));
                     if (partyViewBtn.IsExist())
                     {
                         // OCR 当前队伍名称（无法单字，中间禁止空格）
@@ -625,11 +681,21 @@ public class AutoFightTask : ISoloTask
                         await Delay(200, ct);
                         if (picker.TrySwitch(10))
                         {
+                            // 等待元素战技 CD 就绪
                             await picker.WaitSkillCd(ct);
-                            picker.UseSkill(true);
-                            await Delay(50, ct);
-                            Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                            
+                            // 调用统一的辅助方法，模拟万叶长按 E 的输入序列：
+                            // 包含释放鼠标左键前摇防卡键 -> E 键 KeyDown -> 延时 800ms -> E 键 KeyUp -> 延时 50ms
+                            await SimulateHoldElementalSkillAsync(800, ct);    
+                            
+                            // 调用统一的辅助方法，模拟 6 次鼠标左键连续点击：
+                            // 配合万叶长 E 的滞空特性执行下落攻击，内部包含 try/finally 以保证取消任务时安全释放左键
+                            await SimulateMouseLeftClickLoopAsync(6, ct);      
+                            
+                            // 等待下落攻击和聚怪拾取动作彻底结束
                             await Delay(1500, ct);
+                            // 截图并更新技能最新冷却时间
+                            picker.AfterUseSkill();
                         }
                     }
                     else
@@ -671,7 +737,7 @@ public class AutoFightTask : ISoloTask
                                                 {
                                                     using (var imagePick = CaptureToRectArea())
                                                     {
-                                                        if (imagePick.Find(AutoPickAssets.Instance.PickRo).IsExist())
+                                                        if (imagePick.Find(AutoPickAssets.Get(imagePick, TaskContext.Instance().Config.AutoPickConfig.PickKey).PickRo).IsExist())
                                                         {
                                                             find = false;
                                                         }
@@ -737,7 +803,7 @@ public class AutoFightTask : ISoloTask
         if (_taskParam is { PickDropsAfterFightEnabled: true } )
         {
             // 执行扫描掉落物光柱并靠近的功能
-            await new ScanPickTask().Start(ct);
+            await new ScanPickTask().Start(ct, _taskParam.PickDropsAfterFightSeconds);
         }
     }
 
@@ -904,7 +970,7 @@ public class AutoFightTask : ISoloTask
     // private bool HasFightFlagByGadget(ImageRegion imageRegion)
     // {
     //     // 小道具位置 1920-133,800,60,50
-    //     var gadgetMat = imageRegion.DeriveCrop(AutoFightAssets.Instance.GadgetRect).SrcMat;
+    //     var gadgetMat = imageRegion.DeriveCrop(AutoFightAssets.Get(imageRegion).GadgetRect).SrcMat;
     //     var list = ContoursHelper.FindSpecifyColorRects(gadgetMat, new Scalar(225, 220, 225), new Scalar(255, 255, 255));
     //     // 要大于 gadgetMat 的 1/2
     //     return list.Any(r => r.Width > gadgetMat.Width / 2 && r.Height > gadgetMat.Height / 2);

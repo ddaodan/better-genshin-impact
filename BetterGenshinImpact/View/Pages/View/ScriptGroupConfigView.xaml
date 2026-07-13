@@ -303,17 +303,21 @@
                         <ui:TextBlock Grid.Row="0"
                                       Grid.Column="0"
                                       FontTypography="Body"
-                                      Text="只在传送点时恢复"
+                                      Text="低血量回复时机"
                                       TextWrapping="Wrap" />
                         <ui:TextBlock Grid.Row="1"
                                       Grid.Column="0"
                                       Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                      Text="只有路径在传送点时，才会去七天神像恢复"
+                                      Text="选择低血量时的回复策略：任何路径点/只在传送点/不回复"
                                       TextWrapping="Wrap" />
-                        <ui:ToggleSwitch Grid.Row="0"
-                                         Grid.RowSpan="2"
-                                         Grid.Column="1"
-                                         IsChecked="{Binding PathingConfig.OnlyInTeleportRecover, Mode=TwoWay}" />
+                        <ComboBox Grid.Row="0"
+                                  Grid.RowSpan="2"
+                                  Grid.Column="1"
+                                  MinWidth="100"
+                                  SelectedValuePath="Key"
+                                  DisplayMemberPath="Value"
+                                  ItemsSource="{Binding RecoverTimingSource}"
+                                  SelectedValue="{Binding PathingConfig.RecoverTiming}" />
 
                     </Grid>
                     <Grid Margin="16">
@@ -367,10 +371,238 @@
                                          IsChecked="{Binding PathingConfig.HideOnRepeat, Mode=TwoWay}" />
 
                     </Grid>
-                                       <!-- 执行周期配置 -->
-                    <Grid Margin="16">
 
-                        <ui:CardExpander Margin="0,0,36,12"
+                    <Grid Margin="16,8,16,0">
+
+                        <ui:CardExpander Margin="0,0,36,0"
+                                         ContentPadding="0">
+                        <ui:CardExpander.Header>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
+                                              Text="自动赶路设置"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="选择赶路角色后，在冲刺和奔跑节点大于设定距离时自动执行赶路技能"
+                                              TextWrapping="Wrap" />
+                            </Grid>
+                        </ui:CardExpander.Header>
+                        <StackPanel>
+                            <!-- 赶路角色 -->
+                            <Grid Margin="16,16,16,10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
+                                              Text="赶路角色"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="选择赶路角色后自动启用，留空则关闭赶路"
+                                              TextWrapping="Wrap" />
+                                <ComboBox Grid.Row="0"
+                                          Grid.RowSpan="2"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          ItemsSource="{Binding PathingConfig.HurryOnAvatarList}"
+                                          SelectedItem="{Binding PathingConfig.HurryOnAvatar}" />
+                            </Grid>
+
+                            <!-- 赶路模式 -->
+                            <Grid Margin="16,0,16,10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
+                                              Text="赶路模式"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="精准靠近：适合采集，节点间减速 / 连续赶路：适合锄地"
+                                              TextWrapping="Wrap" />
+                                <ComboBox Grid.Row="0"
+                                          Grid.RowSpan="2"
+                                          Grid.Column="1"
+                                          Width="120"
+                                          ItemsSource="{Binding PathingConfig.TravelModeList}"
+                                          SelectedItem="{Binding PathingConfig.TravelMode}" />
+                            </Grid>
+
+                            <!-- 赶路启用距离 -->
+                            <Grid Margin="16,0,16,10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
+                                              Text="赶路启用距离"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="节点距离大于此值时启用赶路技能，填0则关闭"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBox Grid.Row="0"
+                                            Grid.RowSpan="2"
+                                            Grid.Column="1"
+                                            MinWidth="60"
+                                            Height="35"
+                                            HorizontalContentAlignment="Center"
+                                            Text="{Binding PathingConfig.Distance}" />
+                            </Grid>
+
+                            <!-- 接近停车距离 -->
+                            <Grid Margin="16,0,16,10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
+                                              Text="接近停车距离"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="到达节点前开始减速/下车/切人的距离，超出自定赶路距离时以前者为准"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBox Grid.Row="0"
+                                            Grid.RowSpan="2"
+                                            Grid.Column="1"
+                                            MinWidth="60"
+                                            Height="35"
+                                            HorizontalContentAlignment="Center"
+                                            Text="{Binding PathingConfig.ApproachStopDistance}" />
+                            </Grid>
+
+                            <!-- 接近切人步行 -->
+                            <Grid Margin="16,0,16,10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
+                                              Text="接近时切人步行"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="接近节点时切换步行角色"
+                                              TextWrapping="Wrap" />
+                                <ui:ToggleSwitch Grid.Row="0"
+                                                 Grid.RowSpan="2"
+                                                 Grid.Column="1"
+                                                 IsChecked="{Binding PathingConfig.SwitchToWalkEnabled, Mode=TwoWay}" />
+                            </Grid>
+
+                            <!-- 启用跳飞 -->
+                            <Grid Margin="16,0,16,10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
+                                              Text="启用跳飞赶路"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="开启后赶路时启用跳飞"
+                                              TextWrapping="Wrap" />
+                                <ui:ToggleSwitch Grid.Row="0"
+                                                 Grid.RowSpan="2"
+                                                 Grid.Column="1"
+                                                 IsChecked="{Binding PathingConfig.MwkJumpFlyEnabled, Mode=TwoWay}" />
+                            </Grid>
+
+                            <!-- 跳飞间隔 -->
+                            <Grid Margin="16,0,16,10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
+                                              Text="跳飞/跳跃间隔（秒）"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="跳飞/跳跃赶路间隔，闲云实际使用一半值"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBox Grid.Row="0"
+                                            Grid.RowSpan="2"
+                                            Grid.Column="1"
+                                            MinWidth="60"
+                                            Height="35"
+                                            HorizontalContentAlignment="Center"
+                                            Text="{Binding PathingConfig.MwkJumpFlyIntervalSeconds}" />
+                            </Grid>
+
+
+                        </StackPanel>
+                    </ui:CardExpander>
+                    </Grid>
+
+                                       <!-- 执行周期配置 -->
+                    <Grid Margin="16,0">
+
+                        <ui:CardExpander Margin="0,0,36,0"
                                          ContentPadding="0"
                                          IsExpanded="False">
 
@@ -540,9 +772,9 @@
                                        
                                        
                                        <!-- 跳过执行配置 -->
-                    <Grid Margin="16">
+                    <Grid Margin="16,0">
 
-                        <ui:CardExpander Margin="0,0,36,12"
+                        <ui:CardExpander Margin="0,0,36,0"
                                          ContentPadding="0"
                                          IsExpanded="False">
 
@@ -711,9 +943,9 @@
 
                     </Grid>        
                                        <!-- 优先执行其他配置组 -->
-                     <Grid Margin="16">
+                     <Grid Margin="16,0,16,8">
 
-                        <ui:CardExpander Margin="0,0,36,12"
+                        <ui:CardExpander Margin="0,0,36,0"
                                          ContentPadding="0"
                                          IsExpanded="False">
 
@@ -992,7 +1224,7 @@
                                                     <ui:TextBlock Grid.Row="1"
                                                                   Grid.Column="0"
                                                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                                  Text="快速检查战斗结束，在一轮脚本中，可以每隔一定秒数（默认为5）或指定角色操作后，去检查（在每个角色完成该轮脚本时）。"
+                                                                  Text="快速检查战斗结束( 默认关闭 )，在一轮脚本中，可以每隔一定秒数（默认为5）或指定角色操作后，去检查（在每个角色完成该轮脚本时）。"
                                                                   TextWrapping="Wrap" />
                                                     <ui:ToggleSwitch Grid.Row="0"
                                                                      Grid.RowSpan="2"
@@ -1143,7 +1375,7 @@
                                     <ui:TextBlock Grid.Row="1"
                                                   Grid.Column="0"
                                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="检查战斗结束的延时，不同角色招式结束后的延时不一定相同，默认为1.5秒。也可以指定特定角色之后延时多少秒检查，未指定角色名，则默认为该值。格式如：2.5;白术,1.5;钟离,1.0;"
+                                                  Text="检查战斗结束的延时，不同角色招式结束后的延时不一定相同，默认为1.5秒( 预设0.4秒 )。也可以指定特定角色之后延时多少秒检查，未指定角色名，则默认为该值。格式如：2.5;白术,1.5;钟离,1.0;"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBox Grid.Row="0"
                                                 Grid.RowSpan="2"
@@ -1168,7 +1400,7 @@
                                     <ui:TextBlock Grid.Row="1"
                                                   Grid.Column="0"
                                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="按下切换队伍后去检查屏幕色块的延时，默认为0.45秒。若频繁误判可以适当提高这个值，比如到0.75。确保这个延时不会真的把队伍配置界面切出来。"
+                                                  Text="按下切换队伍后去检查屏幕色块的延时，默认为0.45秒( 预设0.4秒 )。若频繁误判可以适当提高这个值，比如到0.75。确保这个延时不会真的把队伍配置界面切出来。"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBox Grid.Row="0"
                                                 Grid.RowSpan="2"
@@ -1481,6 +1713,41 @@
                                       FontTypography="Body"
                                       Text="二次拾取"
                                       TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid Margin="16">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.KazuhaPickupEnabled}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ui:TextBlock Grid.Row="0"
+                                      Grid.Column="0"
+                                      FontTypography="Body"
+                                      Text="基于经验值判断拾取(经验值57/58/60，不含传奇120等数字)"
+                                      TextWrapping="Wrap" />
+                        <ui:TextBlock Grid.Row="1"
+                                      Grid.Column="0"
+                                      Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                      Text="战斗中检测精英怪死亡经验数字值图标，未检测到时跳过拾取，避免无价值战斗后浪费时间"
+                                      TextWrapping="Wrap" />
+                        <ui:ToggleSwitch Grid.Row="0"
+                                         Grid.RowSpan="2"
+                                         Grid.Column="1"
+                                         Margin="0,0,36,0"
+                                         IsChecked="{Binding PathingConfig.AutoFightConfig.ExpBasedPickupEnabled, Mode=TwoWay}" />
                     </Grid>
                     <Grid Margin="16">
                         <Grid.RowDefinitions>

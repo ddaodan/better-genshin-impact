@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterGenshinImpact.GameTask;
 using BetterGenshinImpact.GameTask.AutoLeyLineOutcrop;
@@ -14,10 +14,24 @@ public partial class OneDragonFlowConfig : ObservableObject
     [ObservableProperty]
     private string _name = string.Empty;
 
+    // 下次执行的任务 Id（为空表示从头开始）
+    [ObservableProperty]
+    private string _nextTaskId = string.Empty;
+
     /// <summary>
-    /// 所有任务的开关状态
+    /// 所有任务的开关状态（键为任务 Id）
     /// </summary>
     public Dictionary<string, bool> TaskEnabledList { get; set; } = new();
+
+    /// <summary>
+    /// 任务执行顺序（任务 Id 列表），用于显式恢复 TaskList 顺序
+    /// </summary>
+    public List<string> TaskOrder { get; set; } = new();
+
+    /// <summary>
+    /// 任务定义（Id → 任务名），用于支持同名任务重复添加
+    /// </summary>
+    public Dictionary<string, string> TaskDefinitions { get; set; } = new();
    
     // 合成树脂的国家
     [ObservableProperty]
@@ -37,6 +51,67 @@ public partial class OneDragonFlowConfig : ObservableObject
 
     [ObservableProperty]
     private bool _weeklyDomainEnabled = false;
+
+    #region 自动首领讨伐配置
+
+    [ObservableProperty]
+    private string _autoBossName = string.Empty;
+
+    [ObservableProperty]
+    private string _autoBossStrategyName = "根据队伍自动选择";
+
+    [ObservableProperty]
+    private string _autoBossTeamName = string.Empty;
+
+    [ObservableProperty]
+    private bool _autoBossSpecifyRunCount = false;
+
+    [ObservableProperty]
+    private int _autoBossRunCount = 1;
+
+    [ObservableProperty]
+    private bool _autoBossUseTransientResin = false;
+
+    [ObservableProperty]
+    private bool _autoBossUseFragileResin = false;
+
+    [ObservableProperty]
+    private int _autoBossReviveRetryCount = 3;
+
+    [ObservableProperty]
+    private bool _autoBossReturnToStatueAfterEachRound = false;
+
+    [ObservableProperty]
+    private bool _autoBossRewardRecognitionEnabled = false;
+
+    partial void OnAutoBossSpecifyRunCountChanged(bool value)
+    {
+        if (value)
+        {
+            return;
+        }
+
+        AutoBossUseTransientResin = false;
+        AutoBossUseFragileResin = false;
+    }
+
+    partial void OnAutoBossRunCountChanged(int value)
+    {
+        if (value < 1)
+        {
+            AutoBossRunCount = 1;
+        }
+    }
+
+    partial void OnAutoBossReviveRetryCountChanged(int value)
+    {
+        if (value < 0)
+        {
+            AutoBossReviveRetryCount = 0;
+        }
+    }
+
+    #endregion
     
     // 领取每日奖励的好感队伍名称
     [ObservableProperty]
@@ -46,13 +121,13 @@ public partial class OneDragonFlowConfig : ObservableObject
     [ObservableProperty]
     private int _minResinToKeep = 0;
     
-    // 领取每日奖励的好感数量
+    // 普通周日或限时奖励选项
     [ObservableProperty]
     private string _sundayEverySelectedValue = "0";
-    
-    // 领取每日奖励的好感数量
+
+    // 每周秘境的全局限时奖励选项，单日留空时使用
     [ObservableProperty]
-    private string _sundaySelectedValue = "0";
+    private string _sundayWeeklySelectedValue = "0";
     
     // 尘歌壶传送方式，1. 地图传送 2. 尘歌壶道具
     [ObservableProperty]
@@ -151,6 +226,9 @@ public partial class OneDragonFlowConfig : ObservableObject
     
     [ObservableProperty]
     private string _mondayDomainName = string.Empty;
+
+    [ObservableProperty]
+    private string _mondaySelectedValue = "0";
     
     
     //周二
@@ -159,6 +237,9 @@ public partial class OneDragonFlowConfig : ObservableObject
     
     [ObservableProperty]
     private string _tuesdayDomainName = string.Empty;
+
+    [ObservableProperty]
+    private string _tuesdaySelectedValue = "0";
     
     //周三
     [ObservableProperty]
@@ -166,6 +247,9 @@ public partial class OneDragonFlowConfig : ObservableObject
     
     [ObservableProperty]
     private string _wednesdayDomainName = string.Empty;
+
+    [ObservableProperty]
+    private string _wednesdaySelectedValue = "0";
     
     //周四
     [ObservableProperty]
@@ -173,6 +257,9 @@ public partial class OneDragonFlowConfig : ObservableObject
     
     [ObservableProperty]
     private string _thursdayDomainName = string.Empty;
+
+    [ObservableProperty]
+    private string _thursdaySelectedValue = "0";
     
     //周五
     [ObservableProperty]
@@ -180,6 +267,9 @@ public partial class OneDragonFlowConfig : ObservableObject
     
     [ObservableProperty]
     private string _fridayDomainName = string.Empty;
+
+    [ObservableProperty]
+    private string _fridaySelectedValue = "0";
     
     //周六
     [ObservableProperty]
@@ -187,6 +277,9 @@ public partial class OneDragonFlowConfig : ObservableObject
     
     [ObservableProperty]
     private string _saturdayDomainName = string.Empty;
+
+    [ObservableProperty]
+    private string _saturdaySelectedValue = "0";
     
     //周日
     [ObservableProperty]
@@ -194,6 +287,9 @@ public partial class OneDragonFlowConfig : ObservableObject
 
     [ObservableProperty]
     private string _sundayDomainName = string.Empty;
+
+    [ObservableProperty]
+    private string _sundaySelectedValue = "0";
 
     // 完成后操作
     [ObservableProperty]
@@ -208,20 +304,35 @@ public partial class OneDragonFlowConfig : ObservableObject
             var dayOfWeek = (serverTime.Hour >= 4 ? serverTime : serverTime.AddDays(-1)).DayOfWeek;
             return dayOfWeek switch
             {
-                DayOfWeek.Monday => (MondayPartyName, MondayDomainName,SundaySelectedValue),
-                DayOfWeek.Tuesday => (TuesdayPartyName, TuesdayDomainName,SundaySelectedValue),
-                DayOfWeek.Wednesday => (WednesdayPartyName, WednesdayDomainName,SundaySelectedValue),
-                DayOfWeek.Thursday => (ThursdayPartyName, ThursdayDomainName,SundaySelectedValue),
-                DayOfWeek.Friday => (FridayPartyName, FridayDomainName,SundaySelectedValue),
-                DayOfWeek.Saturday => (SaturdayPartyName, SaturdayDomainName,SundaySelectedValue),
-                DayOfWeek.Sunday => (SundayPartyName, SundayDomainName,SundaySelectedValue),
-                _ => (PartyName, DomainName,SundaySelectedValue)
+                DayOfWeek.Monday => (GetWeeklyPartyName(MondayPartyName), GetWeeklyDomainName(MondayDomainName), GetWeeklySelectedValue(MondaySelectedValue)),
+                DayOfWeek.Tuesday => (GetWeeklyPartyName(TuesdayPartyName), GetWeeklyDomainName(TuesdayDomainName), GetWeeklySelectedValue(TuesdaySelectedValue)),
+                DayOfWeek.Wednesday => (GetWeeklyPartyName(WednesdayPartyName), GetWeeklyDomainName(WednesdayDomainName), GetWeeklySelectedValue(WednesdaySelectedValue)),
+                DayOfWeek.Thursday => (GetWeeklyPartyName(ThursdayPartyName), GetWeeklyDomainName(ThursdayDomainName), GetWeeklySelectedValue(ThursdaySelectedValue)),
+                DayOfWeek.Friday => (GetWeeklyPartyName(FridayPartyName), GetWeeklyDomainName(FridayDomainName), GetWeeklySelectedValue(FridaySelectedValue)),
+                DayOfWeek.Saturday => (GetWeeklyPartyName(SaturdayPartyName), GetWeeklyDomainName(SaturdayDomainName), GetWeeklySelectedValue(SaturdaySelectedValue)),
+                DayOfWeek.Sunday => (GetWeeklyPartyName(SundayPartyName), GetWeeklyDomainName(SundayDomainName), GetWeeklySelectedValue(SundaySelectedValue)),
+                _ => (PartyName, DomainName, SundayWeeklySelectedValue)
             };
         }
         else
         {
-            return (PartyName, DomainName,SundayEverySelectedValue);
+            return (PartyName, DomainName, SundayEverySelectedValue);
         }
+    }
+
+    private string GetWeeklyPartyName(string partyName)
+    {
+        return string.IsNullOrWhiteSpace(partyName) ? PartyName : partyName;
+    }
+
+    private string GetWeeklyDomainName(string domainName)
+    {
+        return string.IsNullOrWhiteSpace(domainName) ? DomainName : domainName;
+    }
+
+    private string GetWeeklySelectedValue(string selectedValue)
+    {
+        return string.IsNullOrWhiteSpace(selectedValue) || selectedValue == "0" ? SundayWeeklySelectedValue : selectedValue;
     }
 
     public bool ShouldRunLeyLineToday()

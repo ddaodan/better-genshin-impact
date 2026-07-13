@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BetterGenshinImpact.Core.Script.Dependence;
 using BetterGenshinImpact.Core.Script.Dependence.Model;
@@ -10,12 +10,15 @@ using OpenCvSharp;
 using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.GameTask.Model.Area;
 using BetterGenshinImpact.Core.Script.Utils;
+using BetterGenshinImpact.GameTask.Common.Job;
 using BetterGenshinImpact.GameTask.AutoDomain;
+using BetterGenshinImpact.GameTask.AutoBoss;
 using BetterGenshinImpact.GameTask.AutoFight;
 using BetterGenshinImpact.GameTask.AutoFight.Model;
 using BetterGenshinImpact.GameTask.AutoLeyLineOutcrop;
 using BetterGenshinImpact.GameTask.AutoSkip;
 using BetterGenshinImpact.GameTask.AutoStygianOnslaught;
+using BetterGenshinImpact.GameTask.Model.GameUI;
 
 namespace BetterGenshinImpact.Core.Script;
 
@@ -74,9 +77,14 @@ public class EngineExtend
         engine.AddHostType("ServerTime", typeof(ServerTime));
         
         engine.AddHostType("AutoDomainParam", typeof(AutoDomainParam));  
+        engine.AddHostType("AutoBossParam", typeof(AutoBossParam));
+        engine.AddHostType("CountInventoryItemParam", typeof(CountInventoryItemParam));
+        engine.AddHostType("GridScreenName", typeof(GridScreenName));
+        engine.AddHostType("ItemIconRecognitionMode", typeof(ItemIconRecognitionMode));
         engine.AddHostType("AutoFightParam", typeof(AutoFightParam)); 
         engine.AddHostType("AutoLeyLineOutcropParam", typeof(AutoLeyLineOutcropParam));
         engine.AddHostType("AutoStygianOnslaughtParam", typeof(AutoStygianOnslaughtParam));
+        engine.AddHostObject("strategyFile", new StrategyFile());
         //鼠标回调
         engine.AddHostType("KeyMouseHook", typeof(KeyMouseHook)); 
         // 添加C#的类型
@@ -89,10 +97,13 @@ public class EngineExtend
 
         engine.AddHostObject("host", new CustomHostFunctions());
 
+        // HTML 遮罩
+        engine.AddHostObject("htmlMask", new HtmlMask(workDir));
+
         // 导入 JavaScript 模块
         // https://microsoft.github.io/ClearScript/2023/01/24/module-interop.html
         // https://github.com/microsoft/ClearScript/blob/master/ClearScriptTest/V8ModuleTest.cs
-        engine.DocumentSettings.AccessFlags = DocumentAccessFlags.EnableFileLoading | DocumentAccessFlags.AllowCategoryMismatch;
+        engine.DocumentSettings.AccessFlags = DocumentAccessFlags.AllowCategoryMismatch;
         if (searchPaths != null)
         {
             var normalizedPaths = new List<string>();

@@ -1,63 +1,64 @@
 using BetterGenshinImpact.Core.Recognition;
-using BetterGenshinImpact.GameTask.Model;
+using BetterGenshinImpact.GameTask.Model.Assets;
 using OpenCvSharp;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Model;
+using BetterGenshinImpact.GameTask.Common;
+using Microsoft.Extensions.Logging;
+using BetterGenshinImpact.GameTask.Model.Area;
 
 
 namespace BetterGenshinImpact.GameTask.AutoFight.Assets;
 
-public class AutoFightAssets : BaseAssets<AutoFightAssets>
+public sealed class AutoFightAssets
 {
-    public Rect TeamRectNoIndex;
-    public Rect TeamRect;
-    public List<Rect> AvatarSideIconRectList; // 侧边栏角色头像 非联机状态下
-    public List<Rect> AvatarIndexRectList; // 侧边栏角色头像对应的白色块 非联机状态下
-    public List<Rect> AvatarQRectListMap; // 角色头像对应的Q技能图标 
+    private static readonly CaptureAssetsCache<AutoFightAssets> Cache = new(static size => new AutoFightAssets(size));
+    private readonly int _captureWidth;
+    private readonly int _captureHeight;
+    public Rect TeamRectNoIndex { get; private set; }
+    public Rect TeamRect { get; private set; }
+    public IReadOnlyList<Rect> AvatarSideIconRectList { get; private set; } // 侧边栏角色头像 非联机状态下
+    public IReadOnlyList<Rect> AvatarIndexRectList { get; private set; } // 侧边栏角色头像对应的白色块 非联机状态下
+    public IReadOnlyList<Rect> AvatarQRectListMap { get; private set; } // 角色头像对应的Q技能图标
 
-    public Rect ERect;
-    public Rect ECooldownRect;
-    public Rect QRect;
-    public Rect ZCooldownRect;
-    public Rect EndTipsUpperRect; // 挑战达成提示
-    public Rect EndTipsRect;
-    public RecognitionObject WandererIconRa;
-    public RecognitionObject WandererIconNoActiveRa;
-    public RecognitionObject ConfirmRa;
-    public RecognitionObject ArtifactAreaRa;
-    public RecognitionObject ExitRa;
-    public RecognitionObject ClickAnyCloseTipRa;
+    public Rect ERect { get; private set; }
+    public Rect ECooldownRect { get; private set; }
+    public Rect QRect { get; private set; }
+    public Rect QRectForClassify { get; private set; }
+    public Rect ZCooldownRect { get; private set; }
+    public Rect EndTipsUpperRect { get; private set; } // 挑战达成提示
+    public Rect EndTipsRect { get; private set; }
 
-    // 自动秘境
-    // public RecognitionObject LockIconRa; // 锁定辅助图标
+    public IReadOnlyDictionary<string, string> AvatarCostumeMap { get; private set; }
 
-    public Dictionary<string, string> AvatarCostumeMap;
-
-    // 联机
-    public RecognitionObject OnePRa;
-
-    public RecognitionObject PRa;
-    public Dictionary<string, List<Rect>> AvatarSideIconRectListMap; // 侧边栏角色头像 联机状态下
-    public Dictionary<string, List<Rect>> AvatarIndexRectListMap; // 侧边栏角色头像对应的白色块 联机状态下
+    public IReadOnlyDictionary<string, List<Rect>> AvatarSideIconRectListMap { get; private set; } // 侧边栏角色头像 联机状态下
+    public IReadOnlyDictionary<string, List<Rect>> AvatarIndexRectListMap { get; private set; } // 侧边栏角色头像对应的白色块 联机状态下
 
     // 小道具位置
-    public Rect GadgetRect;
+    public Rect GadgetRect { get; private set; }
 
-    public RecognitionObject AbnormalIconRa;
+    /// <summary>
+    /// 经验值模板识别对象列表，用于检测怪物死亡时掉落的经验值数字图标
+    /// </summary>
+    public IReadOnlyList<RecognitionObject> ExperienceRecognitionObjects { get; private set; } = Array.Empty<RecognitionObject>();
+
+    private Rect CaptureRect { get; }
+    private double AssetScale { get; }
 
 #pragma warning disable CS8618 // 在退出构造函数时，不可为 null 的字段必须包含非 null 值。请考虑添加 "required" 修饰符或声明为可为 null。
-    private AutoFightAssets() : base()
+    private AutoFightAssets(CaptureSize captureSize)
     {
-        Initialization(this.systemInfo);
-    }
-
-    protected AutoFightAssets(ISystemInfo systemInfo) : base(systemInfo)
-    {
-        Initialization(systemInfo);
+        _captureWidth = captureSize.Width;
+        _captureHeight = captureSize.Height;
+        CaptureRect = captureSize.CaptureRect;
+        AssetScale = captureSize.AssetScale;
+        Initialization();
     }
 #pragma warning restore CS8618 // 在退出构造函数时，不可为 null 的字段必须包含非 null 值。请考虑添加 "required" 修饰符或声明为可为 null。
 
-    private void Initialization(ISystemInfo systemInfo)
+    private void Initialization()
     {
         TeamRectNoIndex = new Rect(CaptureRect.Width - (int)(355 * AssetScale), (int)(220 * AssetScale),
             (int)((355 - 85) * AssetScale), (int)(465 * AssetScale));
@@ -69,6 +70,8 @@ public class AutoFightAssets : BaseAssets<AutoFightAssets>
             (int)(41 * AssetScale), (int)(18 * AssetScale));
         QRect = new Rect(CaptureRect.Width - (int)(157 * AssetScale), CaptureRect.Height - (int)(165 * AssetScale),
             (int)(110 * AssetScale), (int)(110 * AssetScale));
+        QRectForClassify = new Rect(CaptureRect.Width - (int)(172 * AssetScale), CaptureRect.Height - (int)(166 * AssetScale),
+            (int)(137 * AssetScale), (int)(137 * AssetScale));
         ZCooldownRect = new Rect(CaptureRect.Width - (int)(130 * AssetScale), (int)(814 * AssetScale),
             (int)(60 * AssetScale), (int)(24 * AssetScale));
         // 小道具位置 1920-133,800,60,50
@@ -175,94 +178,65 @@ public class AutoFightAssets : BaseAssets<AutoFightAssets>
             { "p_4", [new Rect(CaptureRect.Width - (int)(61 * AssetScale), (int)(507 * AssetScale), (int)(28 * AssetScale), (int)(24 * AssetScale))] },
         };
 
-        // 左上角的 1P 图标
-        OnePRa = new RecognitionObject
+        // 加载经验值模板图片（用于检测精英怪死亡时的经验值数字图标）
+        try
         {
-            Name = "1P",
-            RecognitionType = RecognitionTypes.TemplateMatch,
-            TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "1p.png", this.systemInfo),
-            RegionOfInterest = new Rect(0, 0, CaptureRect.Width / 4, CaptureRect.Height / 7),
-            DrawOnWindow = false
-        }.InitTemplate();
-        // 右侧联机的 P 图标
-        PRa = new RecognitionObject
+            LoadExperienceRecognitionObjects();
+        }
+        catch (Exception)
         {
-            Name = "P",
-            RecognitionType = RecognitionTypes.TemplateMatch,
-            TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "p.png", this.systemInfo),
-            RegionOfInterest = new Rect(CaptureRect.Width - (int)(CaptureRect.Width / 12.5), CaptureRect.Height / 5, (int)(CaptureRect.Width / 12.5), CaptureRect.Height / 2 - CaptureRect.Width / 7),
-            DrawOnWindow = false
-        }.InitTemplate();
+            // 经验值模板加载失败不应阻止 AutoFightAssets 初始化
+            ExperienceRecognitionObjects = Array.Empty<RecognitionObject>();
+        }
+    }
 
-        WandererIconRa = new RecognitionObject
-        {
-            Name = "WandererIcon",
-            RecognitionType = RecognitionTypes.TemplateMatch,
-            TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "wanderer_icon.png", this.systemInfo),
-            DrawOnWindow = false
-        }.InitTemplate();
-        WandererIconNoActiveRa = new RecognitionObject
-        {
-            Name = "WandererIconNoActive",
-            RecognitionType = RecognitionTypes.TemplateMatch,
-            TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "wanderer_icon_no_active.png", this.systemInfo),
-            DrawOnWindow = false
-        }.InitTemplate();
+    public static AutoFightAssets Get(Region region)
+    {
+        return Cache.Get(region);
+    }
 
-        // 右下角的按钮
-        ConfirmRa = new RecognitionObject
-        {
-            Name = "Confirm",
-            RecognitionType = RecognitionTypes.TemplateMatch,
-            TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "confirm.png", this.systemInfo),
-            RegionOfInterest = new Rect(CaptureRect.Width / 2, CaptureRect.Height / 2, CaptureRect.Width / 2, CaptureRect.Height / 2),
-            DrawOnWindow = false
-        }.InitTemplate();
-        ArtifactAreaRa = new RecognitionObject
-        {
-            Name = "ArtifactArea",
-            RecognitionType = RecognitionTypes.TemplateMatch,
-            TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "artifact_flower_logo.png", this.systemInfo),
-            RegionOfInterest = new Rect(CaptureRect.Width / 2, 0, CaptureRect.Width / 2, CaptureRect.Height),
-            DrawOnWindow = false
-        }.InitTemplate();
+    public static AutoFightAssets Get(int captureWidth, int captureHeight)
+    {
+        return Cache.Get(captureWidth, captureHeight);
+    }
 
-        // 点击任意处关闭提示
-        ClickAnyCloseTipRa = new RecognitionObject
-        {
-            Name = "ClickAnyCloseTip",
-            RecognitionType = RecognitionTypes.TemplateMatch,
-            TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "click_any_close_tip.png", this.systemInfo),
-            RegionOfInterest = new Rect(0, CaptureRect.Height / 2, CaptureRect.Width, CaptureRect.Height / 2),
-            DrawOnWindow = false
-        }.InitTemplate();
+    /// <summary>
+    /// 加载经验值模板图片，文件缺失时跳过，不影响其他功能
+    /// </summary>
+    private void LoadExperienceRecognitionObjects()
+    {
+        var experienceValues = new[] { 57, 58, 60 };
+        var threshold = CaptureRect.Width > 1920 ? 0.6 : 0.9;
+        var roi = new Rect(
+            (int)(CaptureRect.Width * 0.145),
+            (int)(CaptureRect.Height * 0.5),
+            (int)(CaptureRect.Width * 0.02),
+            (int)(CaptureRect.Height * 0.22));
 
-        ExitRa = new RecognitionObject
+        var list = new List<RecognitionObject>();
+        foreach (var exp in experienceValues)
         {
-            Name = "Exit",
-            RecognitionType = RecognitionTypes.TemplateMatch,
-            TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "exit.png", this.systemInfo),
-            RegionOfInterest = new Rect(0, CaptureRect.Height / 2, CaptureRect.Width / 2, CaptureRect.Height / 2),
-            DrawOnWindow = false
-        }.InitTemplate();
+            var fileName = $"experience_{exp}.png";
+            try
+            {
+                var ro = new RecognitionObject
+                {
+                    Name = $"Experience_{exp}",
+                    RecognitionType = RecognitionTypes.TemplateMatch,
+                    TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", fileName, _captureWidth, _captureHeight),
+                    RegionOfInterest = roi,
+                    UseMask = true,
+                    Threshold = threshold,
+                    DrawOnWindow = true,
+                }.InitTemplate();
+                list.Add(ro);
+            }
+            catch (Exception)
+            {
+                // 构造阶段 Logger 可能不可用，静默跳过缺失的模板
+            }
+        }
 
-        // 自动秘境
-        // LockIconRa = new RecognitionObject
-        // {
-        //     Name = "LockIcon",
-        //     RecognitionType = RecognitionTypes.TemplateMatch,
-        //     TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "lock_icon.png", this.systemInfo),
-        //     RegionOfInterest = new Rect(CaptureRect.Width - (int)(215 * AssetScale), 0, (int)(215 * AssetScale), (int)(80 * AssetScale)),
-        //     DrawOnWindow = false
-        // }.InitTemplate();
-
-        AbnormalIconRa = new RecognitionObject
-        {
-            Name = "AbnormalIcon",
-            RecognitionType = RecognitionTypes.TemplateMatch,
-            TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "abnormal_icon.png", this.systemInfo),
-            RegionOfInterest = new Rect(0, (int)(CaptureRect.Height * 0.08), (int)(CaptureRect.Width * 0.04), (int)(CaptureRect.Height * 0.07)),
-            DrawOnWindow = false
-        }.InitTemplate();
+        ExperienceRecognitionObjects = list.AsReadOnly();
     }
 }
