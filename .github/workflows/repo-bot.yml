@@ -11,6 +11,15 @@ on:
     types:
       - created
       - edited
+  # pull_request_target (not pull_request) is required so that pull requests opened from
+  # forks can be labelled/commented. Never check out or execute the pull request head here.
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - ready_for_review
 
 jobs:
   repo-bot:
@@ -24,6 +33,7 @@ jobs:
     uses: ddaodan/bettergi-github-bot/.github/workflows/repo-bot.yml@main
     permissions:
       issues: write
+      pull-requests: write
       contents: read
     secrets:
       REPO_BOT_AI_API_KEY: ${{ secrets.REPO_BOT_AI_API_KEY }}
