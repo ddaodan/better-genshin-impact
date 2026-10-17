@@ -40,6 +40,9 @@ jobs:
       REPO_BOT_GITHUB_APP_PRIVATE_KEY: ${{ secrets.REPO_BOT_GITHUB_APP_PRIVATE_KEY }}
     with:
       config-path: .github/repo-bot.yml
+      # pull_request_target: only fetch the configuration from the base branch.
+      # Never check out the pull request head (it would execute untrusted code).
+      checkout-mode: config-only
       config-overrides-json: ${{ vars.REPO_BOT_CONFIG_OVERRIDES_JSON }}
       ai-enabled: ${{ vars.REPO_BOT_AI_ENABLED }}
       ai-base-url: ${{ vars.REPO_BOT_AI_BASE_URL }}
